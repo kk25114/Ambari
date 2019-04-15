@@ -1,0 +1,269 @@
+﻿ambari安装
+
+2.1.6. Maximum Open File Descriptors    最大的打开的文件描述符
+     ulimit  -a 查看默认数为1024    
+     ulimit -Sn       ulimit -Hn     ulimit -n 50000     修改为50000 
+vim /etc/security/limits.conf   (添加)
+* soft nofile 65536
+* hard nofile 65536
+
+* soft nproc 131072
+* hard nproc 131072
+网关   3步，  /etc/sysconfig/network-scripts/ifcfg-eth0        service network restart             ifconfig 确认
+hostname     hdp1
+hosts             192.168.10.200   hdp200   
+                      192.168.10.201  hdp201
+                       192.168.10.202  hdp202
+
+
+1  调整selinux ，关闭firewalld 
+   setenforce 0  vim /etc/systonfig/selinux  SELINUX=permissive
+   systemctl stop firewalld    systemctl disable firewalld
+ 
+2  查看主机名hostnamectl
+   修改主机名 hostnamectl set-hostname lqk.com.cn  (修改过后，需重启主机才能生效）      ++++    # vi /etc/hosts    域名映射
+
+   vim /etc/hostname    zyl.com.cn
+   vim /etc/hosts       192.168.10.241 zyl.com.cn
+                        192.168.10.240 lqk.com.cn
+   
+ ++++  vim  /etc/sysconfig/network
+
+3  下载NTP
+   yum -y install ntp  && systemctl start ntpd &systemctl enable ntpd
+
+
+4 使用下载好的包，部署jdk，本地下载目录为/usr/hcp
+    tar -xzf jdk-8u112-linux-x64.tar.gz -C /usr/jdk64
+   设置环境变量    vim /etc/profile 
+JAVA_HOME=/usr/jdk64/jdk1.8.0_112
+JRE_HOME=/usr/jdk64/jdk1.8.0_112/jre
+CLASS_PATH=.:$JAVA_HOME/lib/dt.jar:$JAVA_HOME/lib/tools.jar:$JRE_HOME/lib
+PATH=$JAVA_HOME/bin:$JRE_HOME/bin:$PATH
+export JAVA_HOME JRE_HOME CLASS_PATH PATH
+   让修改生效： source /etc/profile
+   验证java是否安装成功 ：java -version	
+   
+5 建立部署安装的ambari yum仓库。   
+    vim /etc/yum.repo.d/ambari.repo
+     [ambari-2.6.1.0]
+     name=ambari Version - ambari-2.6.1.0
+     baseurl=file:///localrepo/ambari-2.6.1.0-centos7/centos7/2.6.1.0-143
+     gpgcheck=1
+     gpgkey=file:///localrepo/ambari-2.6.1.0-centos7/centos7/2.6.1.0-143/RPM-GPG-KEY/RPM-GPG-KEY-Jenkins
+     enabled=1
+     priority=1
+
+	
+6 下载并安装ambari-server
+    yum -y install ambari-server
+   ambari-server setup -j /usr/jdk64/jdk1.8.0_112 -s
+	
+7 安装HCP Ambari Management Pack
+     wget -nv http://public-repo-1.hortonworks.com/HCP/centos7/1.x/updates/1.4.0.0/tars/metron/hcp-ambari-mpack-1.4.0.0-38.tar.gz 
+	 ambari-server install-mpack --mpack=./hcp-ambari-mpack-1.4.0.0-38.tar.gz --verbose 
+	 备注：${MPACK_DOWNLOAD_DIRECTORY}=hcp-ambari-mpack的存放目录
+	
+8 启动ambari-server
+         ambari-server start 
+  
++++++++++++++
+ 三、HTTP服务器安装
+为了其他组件的安装能通过YUM快速安装，需要自己在任意一台服务器上安装HTTP服务器（建议选择计划安装Ambari-Server的服务器）。
+$  yum –y install httpd
+$  systemctl start httpd && systemctl enable httpd
+$  ln –s /localrepo  /var/www/html/localrepo
+将安装包上传至/localrepo目录。
+
+
+//直接上传安装包到  /var/www/html/localrepo
+++++++++++++++
+
+9 利用http访问 ambari
+          http://192.168.10.240:8080
+	
+10 实现ssh免密码登陆
+        ssh-keygen
+	ssh-copy-id -i ~/.ssh/id_rsa.pub root@172.20.0.99
+	cd ~/.ssh
+	sz id.rsa   (保存私钥到windows目录中）
+	
+   *如果你在centos7上安装集群，你必须安装 EPEL repo仓库  (yum -y install epel-release)
+  
+  
+ambari管理页面上操作安装HADOOP组件	(WEB页面上操作）
+
+1  点击"Launch install wizard" 按钮。
+2  在"Name your cluster Learn more"下面的空格填写你部署的集群名称。如：zyl，点击next按钮。
+3  点击选择"HDP-2.6.4.0",点击选择"use local repository",在下方的列表中选择"redhat7"项，
+     ES-Curator-5.x  ：file:///localrepo/elastic_5.6.2
+	 HCP-1.4.0.0-38  ：file:///localrepo/HCP-1.4.0.0-38-repo-1
+	 HDP-2.6         ：file:///localrepo/HDP-2.6.4.0-centos7/centos7/2.6.4.0-91
+	 HDP-2.6-GPL     ：file:///localrepo/HDP-2.6.4.0-centos7/centos7/2.6.4.0-91
+     HDP-UTILS-1.1.0.22 ：file:///localrepo/HDP-UTILS-1.1.0.21
+	 elasticsearch-5.x ：file:///localrepo/elastic_5.6.2
+     kibana-5.x      ：file:///localrepo/elastic_5.6.2
+     备注：定义完这些文件路径后，在第5步会产生一个AMBARI-HDP-1.repo，Hadoop的组件都是在这个repo中下载到的。点击next按钮。
+4  在"Target Hosts"项，填写完整的域名（FQDN),如:lqk.com.cn。在"SSH Private Key "项中上传（ambari安装操作中第10步保存到     windows的私钥文件）私钥，点击next按钮。
+5  安装完后，点击next按钮。
+6  需要勾选的服务"HDFS,YARN + MapReduce2,HBase,ZooKeeper,Storm,Kafka,Elasticsearch,Kibana,Metron",完成后，点击next按钮。
+7  到达这步后，需要根据实际情况选择不同的服务安装到不同的主机上，完成后点击next按钮。
+8  如果是在单台机器上安装集群，需勾选" Elasticsearch Data Node"不安装次服务，完成后点击next按钮。
+9  这步有许多的报错： 根据红色的报错信息调整如下 
+     NameNode directories：/hadoop/hdfs/namenode
+	 DataNode directories：/hadoop/hdfs/data
+	 yarn.nodemanager.local-dirs：/hadoop/yarn/local
+	 yarn.nodemanager.log-dirs：/hadoop/yarn/log
+     Grafana Admin Password ：123456
+     Smartsense （ Password for user 'admin'：123456）
+     Elasticsearch （zen_discovery_ping_unicast_hosts：lqk.com.cn   根据应用填写主机名）
+     Kanba （kibana_es_url：http://192.168.10.240:9200   根据实际应用填写IP）
+	 Metron （Elasticsearch Hosts ：lqk.com.cn     根据应用填写主机名)
+             (REST  Metron JDBC URL:       jdbc:mysql://192.168.10.235:3306/metronrest     IP地址为实际在本IP上安装了mysql，并已创建
+			  好连接的库文件，参考本目录下的centos7安装mysql文档）
+			 (REST  Metron JDBC Driver:    com.mysql.jdbc.Driver   )
+			 (REST  Metron JDBC username: root       根据实际填写登录mysql的用户名)
+			 (REST  Metron JDBC password: P@ssw0rd    根据实际填写登录mysql的用户名的密码)
+			 (REST  Metron JDBC platform: mysql)
+			 (REST  Metron JDBC client path:   /usr/hcp/current/metron/lib/mysql-connector-java-5.1.45/mysql-connector-java-5.1.45-bin.jar          根据实际填写本jar的路径）
+10  确认本页内容无误，点击next按钮。
+11  开始安装组件，等到安装结果，完成后点击next按钮。
+    
+各组件安装好之后，需要更改一些配置：
+    elasticsearch （Advanced elastic-site>masters_also_are_datanodes: "true")
+	           (Advanced elastic-sysconfig>heap_size: "32g")
+	           (Advanced elastic-site>gateway_recover_after_data_nodes: "1")
+	storm    (Supervisor > supervisor.slots.ports: "[6700, 6701,6702,6703,6704,6705]"
+
+        
+    elasticsearch  加载 Execute ELASTICSEARCH_TEMPLATE_INSTALL
+    KIBANA    加载Execute LOAD_TEMPLATE_INSTALL 
+————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————————
+ 将profile.json 文件放入/usr/hcp/current/metron/config/zookeeper目录
+修改dist/build.js
+查看ip ,修改ip：端口
+
+
+____________________________________________________________________________________________________________________________
+       Setting up the REST Application Database
+mysql -uroot -p
+CREATE DATABASE IF NOT EXISTS metronrest;
+
+CREATE USER 'metron'@'$REST_HOST' IDENTIFIED BY 'Myp@ssw0rd';
+GRANT ALL PRIVILEGES ON metronrest.* TO 'metron'@'$REST_HOST';
+
+use metronrest;
+create table if not exists users(
+username varchar(50) not null primary key,
+password varchar(50) not null,
+enabled boolean not null
+);
+create table authorities (
+username varchar(50) not null,
+authority varchar(50) not null,
+constraint fk_authorities_users foreign key(username) references
+users(username)
+);
+
+create unique index ix_auth_username on authorities (username,authority);	   
+use metronrest;
+insert into users (username, password, enabled) values ('zyl','zyl',1);
+insert into authorities (username, authority) values ('zyl','zyl');
+_____________________________________________________________________________________________________________
+
+  204  tail -f /var/log/ambari-server/ambari-server.log
+       /var/log/metron/metron-rest.log
+       /usr/hcp/current/metron/config/zookeeper/indexing/snort.json      *********************
+若允许远程主机访问，可注释掉bind行   或者    将bind 127.0.0.1改为： bind 0.0.0.0
+echo "create 'pcap','t'" | hbase shell -n
+echo "create 'access_tracker','t'" | hbase shell -n
+echo "create 'threatintel','t'" | hbase shell -n
+echo "create 'enrichment','t'" | hbase shell -n
+echo "create 'profiler','P'" | hbase shell -n
+echo "create 'metron_update','t'" | hbase shell -n
+_____________________________________________________________________________________________________________________________________
+/usr/hcp/1.4.0.0-38/metron/bin/zk_load_configs.sh  --mode PUSH -i /usr/hcp/1.4.0.0-38/metron/config/zookeeper -z ambari:2181
+./zk_load_configs.sh --mode PUSH -i ../config/zookeeper -z hadoop242:2181
+ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
+
+__________________________________________________________________________________________________
+
+/apps/metron/indexing/indexed/snort
+force_https_protocol = PROTOCOL_TLSv1_2	  /etc/ambari-agent/conf/ambari-agent.ini
+ JAVA_OPTS="-server -Xms1536m -Xmx1536m"  
+
+ 
+clean install -Dmaven.test.skip=true
+_________________________________________________________________________________________
+192.168.10.229 (cif/123456)
+
+ps -elf|grep snort-producer |grep -v "auto" |awk '{print $4}'| xargs
+cat /sys/block/sda/queue/scheduler  查看磁盘io的策略
+
+234,235,236
+zylp@ssw0rd
+
+svnserve -d -r /svn/svndata/
+
+查找较多time_wait连接：    netstat-n|grep TIME_WAIT|awk '{print$5}'|sort|uniq-c|sort-rn|head-n20
+23.统计出一台 web server 上的各个状态(ESTABLISHED/SYN_SENT/SYN_RECV 等)的个数?
+netstat -antl|grep ESTABLISTHED|wc -l
+netstat -antl|grep SYN_SENT|wc -l
+netstat -antl|grep SYN_RECV|wc -l
+
+
+234,235,236
+zylp@ssw0rd
+
+
+Accumulo 	1.7.0
+Ambari Infra 	0.1.0
+Ambari Metrics 	0.1.0
+Atlas 	0.8.0
+Druid 	0.10.1
+Elasticsearch 	5.6.2
+Falcon 	0.10.0
+Flume 	1.5.2
+HBase 	1.1.2
+HDFS 	2.7.3
+Hive 	1.2.1000
+Kafka 	0.10.1
+Kibana 	5.6.2
+Knox 	0.12.0
+Log Search 	0.5.0
+Mahout 	0.9.0
+Metron 	0.4.1.1.4.0.0
+Oozie 	4.2.0
+Pig 	0.16.0
+Ranger 	0.7.0
+Ranger KMS 	0.7.0
+Slider 	0.92.0
+SmartSense 	1.4.4.2.6.1.0-143
+Spark 	1.6.3
+Spark2 	2.2.0
+Sqoop 	1.4.6
+Storm 	1.1.0
+Superset 	0.15.0
+Tez 	0.7.0
+YARN 	2.7.3
+Zeppelin Notebook 	0.7.3
+ZooKeeper 	3.4.6
+
+om前端 http://a17167330l.iask.in:11020
+
+om后端 http://a17167330l.iask.in:11022
+
+screen前端 http://a17167330l.iask.in:11021
+
+screen后端 http://a17167330l.iask.in:11023
+
+
+
+
+
+
+
+
+
+
+
